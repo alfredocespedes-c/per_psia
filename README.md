@@ -1,47 +1,51 @@
-# PsiA — MVP visual v0.1.0
+# PsiA MVP v0.2.0
 
-Maqueta funcional inicial de un sistema de acompañamiento psicológico longitudinal.
+Maqueta conceptual de PsiA.
 
 ## Arquitectura
+
 - Frontend: React + Vite
 - Backend: Node.js + Express
-- Datos en esta maqueta: mock/in-memory
-- Evolución prevista: PostgreSQL para perfiles longitudinales, evidencias y trazabilidad; almacenamiento de audio separado; servicios desacoplados para transcripción, análisis acústico y motor de evidencia.
+- Publicación frontend: GitHub Pages
+- CI/CD: GitHub Actions
+- Datos actuales: simulados
 
-## Pantallas incluidas
-1. Resumen de estado longitudinal
-2. Registro de audio / nota
-3. Historial de evidencia
-4. Vista profesional
+## Módulos
 
-## Principio de producto
-PsiA muestra señales, tendencias, evidencia y nivel de confianza. No presenta hipótesis automáticas como diagnósticos clínicos.
+- Estado actual
+- Nuevo registro de audio/notas
+- Historial de evidencias
+- Vista profesional
 
-## Ejecutar frontend
+## Desarrollo local
+
+### Frontend
+
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
 
-## Ejecutar backend
+### Backend
+
 ```bash
 cd backend
 npm install
-npm run dev
+npm start
 ```
 
-Backend por defecto: http://localhost:3001
+## GitHub Pages
 
-## Próxima arquitectura sugerida
+`.github/workflows/deploy-pages.yml` publica el frontend automáticamente en cada push a `main`.
 
-Audio / Nota
-  -> Ingesta
-  -> Transcripción
-  -> Extracción acústica / NLP
-  -> Motor de evidencia
-  -> Perfil longitudinal
-  -> Reglas de escalamiento
-  -> UI persona / UI profesional
+Consulta `GITHUB_PAGES.md` para la primera configuración.
 
-La maqueta no realiza todavía inferencias clínicas reales: los datos son demostrativos para validar UX, estructura y lógica de producto antes de integrar modelos.
+## Nota clínica
+
+Esta versión es una maqueta conceptual. No realiza diagnóstico ni inferencia psicológica clínica real. Las señales y valores son demostrativos.
+
+## Versionado
+
+- v0.1.0 — maqueta conceptual inicial React + Node/Express.
+- v0.2.0 — GitHub Pages + GitHub Actions incorporados a la arquitectura.
