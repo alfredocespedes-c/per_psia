@@ -1,51 +1,46 @@
-# PsiA MVP v0.2.0
+# PsiA MVP v0.3.0
 
-Maqueta conceptual de PsiA.
+Prototipo funcional para analizar audio sin servicios LLM externos.
 
 ## Arquitectura
+- Frontend: React + Vite. Desplegable en GitHub Pages.
+- API: Node.js + Express. Recibe el audio y lo deriva al motor Python.
+- Audio Engine: Python + FastAPI + librosa.
+- Persistencia actual: localStorage del navegador.
+- Exportación: JSON descargable desde el frontend.
+- Base de datos: no incluida todavía.
 
-- Frontend: React + Vite
-- Backend: Node.js + Express
-- Publicación frontend: GitHub Pages
-- CI/CD: GitHub Actions
-- Datos actuales: simulados
-
-## Módulos
-
-- Estado actual
-- Nuevo registro de audio/notas
-- Historial de evidencias
-- Vista profesional
-
-## Desarrollo local
-
-### Frontend
-
+## Ejecutar localmente
+### 1. Python
+```bash
+cd python-audio-service
+python -m venv .venv
+# Windows: .venv\\Scripts\\activate
+# macOS/Linux: source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn main:app --reload --port 8000
+```
+### 2. Node
+```bash
+cd backend
+npm install
+npm run dev
+```
+### 3. React
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
+Abra la URL indicada por Vite. Pulse **Probar audio base**.
 
-### Backend
+## Flujo
+`audio -> Node/Express -> Python/librosa -> JSON -> localStorage -> Exportar JSON`
 
-```bash
-cd backend
-npm install
-npm start
-```
+El audio temporal se elimina después del análisis tanto en Node como en Python. La transcripción aparece como `not_enabled`; se reserva para una versión posterior con un motor local tipo faster-whisper.
 
-## GitHub Pages
+## Datos acústicos v1
+Duración, sample rate, energía RMS, pitch estimado y su variabilidad, zero crossing rate, centroide espectral, silencio estimado, ratio de silencio y vector MFCC medio.
 
-`.github/workflows/deploy-pages.yml` publica el frontend automáticamente en cada push a `main`.
-
-Consulta `GITHUB_PAGES.md` para la primera configuración.
-
-## Nota clínica
-
-Esta versión es una maqueta conceptual. No realiza diagnóstico ni inferencia psicológica clínica real. Las señales y valores son demostrativos.
-
-## Versionado
-
-- v0.1.0 — maqueta conceptual inicial React + Node/Express.
-- v0.2.0 — GitHub Pages + GitHub Actions incorporados a la arquitectura.
+## Alcance clínico
+Esta versión solo realiza medición acústica. No diagnostica ni infiere automáticamente estados psicológicos.

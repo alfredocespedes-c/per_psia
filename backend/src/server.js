@@ -1,11 +1,5 @@
-import express from 'express';
-import cors from 'cors';
-import multer from 'multer';
-const app=express(); const upload=multer({dest:'uploads/'}); app.use(cors()); app.use(express.json());
-const profile={personId:'demo-001',baselineDays:43,globalConfidence:'media',signals:[{key:'mood',label:'Ánimo',score:36,trend:'down'},{key:'anxiety',label:'Ansiedad / tensión',score:63,trend:'up'},{key:'energy',label:'Energía',score:31,trend:'down'},{key:'sleep',label:'Sueño',score:42,trend:'down'}]};
-app.get('/api/health',(req,res)=>res.json({ok:true,service:'PsiA API',version:'0.1.0'}));
-app.get('/api/profile/:id',(req,res)=>res.json(profile));
-app.get('/api/evidence/:id',(req,res)=>res.json([{source:'audio',at:'hoy 08:16',signal:'energy',text:'Mayor duración de pausas respecto de línea base.',confidence:'media'},{source:'note',at:'ayer 22:40',signal:'sleep',text:'Tercera mención semanal de dificultad para dormir.',confidence:'media'}]));
-app.post('/api/notes',(req,res)=>res.status(201).json({ok:true,id:`note-${Date.now()}`,received:req.body}));
-app.post('/api/audio',upload.single('audio'),(req,res)=>res.status(202).json({ok:true,id:`audio-${Date.now()}`,status:'queued',message:'En una versión posterior este endpoint conectará transcripción + análisis acústico + motor de evidencia.'}));
-app.listen(3001,()=>console.log('PsiA API http://localhost:3001'));
+import express from 'express';import cors from 'cors';import multer from 'multer';import axios from 'axios';import FormData from 'form-data';import fs from 'fs';
+const app=express();const upload=multer({dest:'tmp/',limits:{fileSize:25*1024*1024}});const PY=process.env.PSIA_AUDIO_URL||'http://127.0.0.1:8000';
+app.use(cors());app.use(express.json());app.get('/api/health',(_,r)=>r.json({ok:true,service:'psia-node',python:PY}));
+app.post('/api/audio/analyze',upload.single('audio'),async(req,res)=>{if(!req.file)return res.status(400).json({error:'audio requerido'});try{const f=new FormData();f.append('audio',fs.createReadStream(req.file.path),{filename:req.file.originalname,contentType:req.file.mimetype});const out=await axios.post(`${PY}/analyze`,f,{headers:f.getHeaders(),maxBodyLength:Infinity});res.json(out.data)}catch(e){res.status(502).json({error:'No fue posible analizar el audio',detail:e?.response?.data||e.message})}finally{fs.unlink(req.file.path,()=>{})}});
+app.listen(process.env.PORT||3001,()=>console.log('PsiA Node http://localhost:3001'));

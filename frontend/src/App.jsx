@@ -1,48 +1,17 @@
-import React, {useMemo, useState} from 'react';
-import {BrainCircuit, Mic2, FileText, Activity, ShieldAlert, UserRound, ChevronRight, Play, Upload, Search, Sparkles, Clock3, TrendingDown, TrendingUp, Minus, HeartHandshake} from 'lucide-react';
-
-const signals = [
-  {label:'Ánimo', value:'Bajo', trend:'down', score:36, confidence:'Media'},
-  {label:'Ansiedad / tensión', value:'Moderada', trend:'up', score:63, confidence:'Media'},
-  {label:'Energía', value:'Baja', trend:'down', score:31, confidence:'Alta'},
-  {label:'Sueño', value:'Irregular', trend:'down', score:42, confidence:'Media'},
-  {label:'Interacción social', value:'Estable', trend:'flat', score:57, confidence:'Baja'},
-  {label:'Orientación al futuro', value:'Disminuyendo', trend:'down', score:38, confidence:'Media'},
-];
-
-const evidence = [
-  ['Audio · hoy 08:16','Aumento de pausas largas y menor variabilidad de energía respecto de la línea base.','Voz'],
-  ['Nota · ayer 22:40','Menciona dificultades para dormir por tercera vez esta semana.','Lenguaje'],
-  ['Audio · lunes','Mayor frecuencia de expresiones asociadas a preocupación laboral.','Contenido'],
-  ['Seguimiento · 14 días','Descenso sostenido de energía estimada; requiere corroboración con autorreporte.','Tendencia'],
-];
-
-function Trend({kind}){ if(kind==='up') return <TrendingUp size={16}/>; if(kind==='down') return <TrendingDown size={16}/>; return <Minus size={16}/>; }
-
-function App(){
-  const [view,setView]=useState('resumen');
-  const [selected,setSelected]=useState(0);
-  const selectedSignal=signals[selected];
-  const nav=[['resumen','Resumen',Activity],['registro','Nuevo registro',Mic2],['historial','Historial',Clock3],['profesional','Vista profesional',UserRound]];
-  return <div className="appShell">
-    <aside className="sidebar">
-      <div className="brand"><div className="brandMark"><BrainCircuit size={24}/></div><div><b>PsiA</b><small>Acompañamiento longitudinal</small></div></div>
-      <nav>{nav.map(([id,label,Icon])=><button key={id} className={view===id?'active':''} onClick={()=>setView(id)}><Icon size={18}/>{label}</button>)}</nav>
-      <div className="privacy"><ShieldAlert size={18}/><div><b>Apoyo, no diagnóstico</b><span>Las señales son hipótesis que requieren contexto y, cuando corresponda, evaluación profesional.</span></div></div>
-    </aside>
-    <main>
-      <header><div><p className="eyebrow">PERFIL LONGITUDINAL</p><h1>{view==='resumen'?'Estado actual':view==='registro'?'Registrar cómo estás':view==='historial'?'Evolución':'Resumen para profesional'}</h1><p className="sub">Persona demo · Línea base: 43 días · Última actualización: hoy 08:24</p></div><button className="profile"><span>AC</span>Perfil</button></header>
-      {view==='resumen' && <>
-        <section className="heroCard"><div><span className="statusPill">Seguimiento recomendado</span><h2>Se observa un cambio sostenido en energía y sueño.</h2><p>La evidencia actual sugiere explorar bienestar general y calidad del sueño. No constituye un diagnóstico.</p><div className="heroActions"><button onClick={()=>setView('registro')}><Mic2 size={17}/> Registrar audio</button><button className="secondary" onClick={()=>setView('profesional')}><HeartHandshake size={17}/> Ver resumen profesional</button></div></div><div className="heroGauge"><div className="ring"><span>4</span><small>señales<br/>activas</small></div><p>Confianza global: <b>media</b></p></div></section>
-        <div className="grid2">
-          <section className="panel"><div className="panelTitle"><div><p className="eyebrow">DIMENSIONES</p><h3>Estado psicológico observado</h3></div><span className="chip">vs. línea base</span></div><div className="signalList">{signals.map((s,i)=><button className={`signal ${selected===i?'selected':''}`} key={s.label} onClick={()=>setSelected(i)}><div className="signalHead"><span>{s.label}</span><b>{s.value}</b></div><div className="bar"><i style={{width:`${s.score}%`}}/></div><div className="signalMeta"><span><Trend kind={s.trend}/> Tendencia</span><small>Confianza {s.confidence}</small></div></button>)}</div></section>
-          <section className="panel detail"><div className="panelTitle"><div><p className="eyebrow">EXPLICABILIDAD</p><h3>{selectedSignal.label}</h3></div><Sparkles size={21}/></div><div className="detailScore"><span>{selectedSignal.score}</span><div><b>{selectedSignal.value}</b><small>Índice interno de seguimiento</small></div></div><h4>¿Por qué aparece esta señal?</h4>{evidence.slice(0,3).map((e,idx)=><div className="evidence" key={idx}><div className="dot"/><div><b>{e[0]}</b><p>{e[1]}</p><span>{e[2]}</span></div></div>)}<button className="textBtn">Ver toda la evidencia <ChevronRight size={16}/></button></section>
-        </div>
-      </>}
-      {view==='registro' && <section className="captureWrap"><div className="captureCard"><div className="micCircle"><Mic2 size={34}/></div><h2>Cuéntame cómo has estado</h2><p>Habla libremente. PsiA separará el contenido de las características acústicas y comparará ambas con tu propia línea base.</p><button className="record"><span/>Comenzar grabación</button><div className="divider"><i/>o<i/></div><button className="upload"><Upload size={18}/> Subir archivo de audio</button></div><div className="noteCard"><FileText size={22}/><h3>También puedes escribir una nota</h3><textarea placeholder="¿Qué pasó hoy? ¿Cómo te sentiste? ¿Hay algo que te preocupe especialmente?"/><button>Guardar nota</button></div></section>}
-      {view==='historial' && <section className="panel"><div className="panelTitle"><div><p className="eyebrow">ÚLTIMOS 14 DÍAS</p><h3>Evidencia y cambios detectados</h3></div><button className="iconBtn"><Search size={18}/></button></div><div className="timeline">{evidence.concat([['Nota · hace 6 días','Describe una jornada positiva y mayor contacto social.','Protector'],['Audio · hace 9 días','Patrón vocal dentro de la línea base individual.','Voz']]).map((e,idx)=><div className="timelineItem" key={idx}><div className="timeDot"/><div><span>{e[0]}</span><h4>{e[1]}</h4><small>{e[2]}</small></div></div>)}</div></section>}
-      {view==='profesional' && <div className="professionalGrid"><section className="panel"><p className="eyebrow">RESUMEN AUTOMÁTICO · 14 DÍAS</p><h2>Aspectos sugeridos para explorar</h2><div className="priority">1 <div><b>Sueño y recuperación</b><p>Tres menciones recientes de dificultad para dormir junto a descenso de energía.</p></div></div><div className="priority">2 <div><b>Estrés laboral</b><p>Aumento de referencias a preocupación y carga laboral.</p></div></div><div className="priority">3 <div><b>Orientación al futuro</b><p>Disminución de lenguaje prospectivo positivo respecto de la línea base.</p></div></div><div className="notice">Este resumen organiza evidencia observada; no reemplaza entrevista clínica, anamnesis ni juicio profesional.</div></section><section className="panel"><p className="eyebrow">TRAZABILIDAD</p><h3>Señales con mayor peso</h3>{signals.slice(0,4).map((s,i)=><div className="compactSignal" key={i}><div><b>{s.label}</b><span>{s.value}</span></div><strong>{s.score}</strong></div>)}<button className="export">Generar resumen de sesión</button></section></div>}
-    </main>
-  </div>
-}
-export default App;
+import React,{useEffect,useRef,useState} from 'react';
+import {BrainCircuit,Mic2,Upload,Download,Trash2,Play,Activity,ShieldAlert} from 'lucide-react';
+const API=import.meta.env.VITE_API_URL||'http://localhost:3001';
+const fmt=n=>n==null?'—':typeof n==='number'?n.toLocaleString('es-CL'):n;
+export default function App(){
+ const [records,setRecords]=useState(()=>{try{return JSON.parse(localStorage.getItem('psia_audio_records')||'[]')}catch{return[]}});const [busy,setBusy]=useState(false);const [msg,setMsg]=useState('');const input=useRef();
+ useEffect(()=>localStorage.setItem('psia_audio_records',JSON.stringify(records)),[records]);
+ async function analyzeFile(file){if(!file)return;setBusy(true);setMsg('Analizando audio…');try{const fd=new FormData();fd.append('audio',file);const r=await fetch(`${API}/api/audio/analyze`,{method:'POST',body:fd});const j=await r.json();if(!r.ok)throw new Error(j.detail||j.error||'Error');const rec={id:crypto.randomUUID(),saved_at:new Date().toISOString(),...j};setRecords(x=>[rec,...x]);setMsg('Análisis guardado localmente.')}catch(e){setMsg(`Error: ${typeof e.message==='string'?e.message:JSON.stringify(e.message)}`)}finally{setBusy(false)}}
+ async function sample(){setBusy(true);setMsg('Cargando audio base…');try{const r=await fetch(`${import.meta.env.BASE_URL}audio/audio_base.wav`);const b=await r.blob();await analyzeFile(new File([b],'audio_base.wav',{type:'audio/wav'}))}catch(e){setMsg('No se pudo cargar el audio base.');setBusy(false)}}
+ function exportJson(){const payload={schema:'psia.export.v1',exported_at:new Date().toISOString(),record_count:records.length,records};const url=URL.createObjectURL(new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download=`psia_export_${new Date().toISOString().slice(0,10)}.json`;a.click();URL.revokeObjectURL(url)}
+ function clear(){if(confirm('¿Eliminar los análisis guardados en este navegador?'))setRecords([])}
+ const last=records[0];return <div className="appShell"><aside className="sidebar"><div className="brand"><div className="brandMark"><BrainCircuit size={24}/></div><div><b>PsiA</b><small>Audio Engine v0.3.0</small></div></div><nav><button className="active"><Activity size={18}/> Laboratorio de audio</button></nav><div className="privacy"><ShieldAlert size={18}/><div><b>Medición, no diagnóstico</b><span>La versión actual mide señal acústica y no infiere un estado clínico.</span></div></div></aside><main><header><div><p className="eyebrow">PROTOTIPO FUNCIONAL</p><h1>Análisis acústico local</h1><p className="sub">React → Node/Express → Python/librosa → almacenamiento local → JSON</p></div><button className="profile" onClick={exportJson} disabled={!records.length}><Download size={17}/> Exportar JSON</button></header>
+ <section className="heroCard"><div><span className="statusPill">Python habilitado</span><h2>Prueba un audio y observa exactamente qué datos genera PsiA.</h2><p>El audio se envía al servicio local, Python calcula métricas acústicas y Node devuelve un JSON. El navegador conserva el resultado; el archivo de audio no se guarda en esta versión.</p><div className="heroActions"><button onClick={sample} disabled={busy}><Play size={17}/> Probar audio base</button><button className="secondary" onClick={()=>input.current.click()} disabled={busy}><Upload size={17}/> Subir mi audio</button><input ref={input} hidden type="file" accept="audio/*,.wav,.mp3,.m4a,.ogg" onChange={e=>analyzeFile(e.target.files?.[0])}/></div>{msg&&<p className="runMessage">{msg}</p>}</div><div className="heroGauge"><div className="ring"><span>{records.length}</span><small>análisis<br/>guardados</small></div><p>Persistencia: <b>localStorage</b></p></div></section>
+ <div className="grid2"><section className="panel"><div className="panelTitle"><div><p className="eyebrow">ÚLTIMO RESULTADO</p><h3>Métricas acústicas</h3></div></div>{last?<div className="metricGrid">{[['Duración',last.source?.duration_sec,'s'],['Muestreo',last.source?.sample_rate_hz,'Hz'],['Pitch medio',last.acoustic?.pitch_hz_mean,'Hz'],['Variabilidad pitch',last.acoustic?.pitch_hz_std,'Hz'],['Energía RMS',last.acoustic?.rms_energy_mean,''],['Silencio estimado',last.acoustic?.estimated_silence_sec,'s'],['Ratio silencio',last.acoustic?.estimated_silence_ratio,''],['Centroide espectral',last.acoustic?.spectral_centroid_hz_mean,'Hz']].map(([a,b,c])=><div className="metric" key={a}><small>{a}</small><b>{fmt(b)} {c}</b></div>)}</div>:<div className="empty">Aún no hay análisis. Usa el audio base para generar el primero.</div>}</section>
+ <section className="panel"><div className="panelTitle"><div><p className="eyebrow">DATOS GUARDADOS</p><h3>Registro JSON</h3></div></div><pre className="jsonPreview">{last?JSON.stringify(last,null,2):'{}'}</pre></section></div>
+ <section className="panel historyPanel"><div className="panelTitle"><div><p className="eyebrow">HISTORIAL LOCAL</p><h3>Análisis realizados</h3></div><button className="iconText" onClick={clear} disabled={!records.length}><Trash2 size={16}/> Limpiar</button></div>{records.length?records.map(r=><div className="audioRow" key={r.id}><div><b>{r.source?.filename}</b><span>{new Date(r.saved_at).toLocaleString('es-CL')}</span></div><div><span>{r.source?.duration_sec}s</span><span>pitch {fmt(r.acoustic?.pitch_hz_mean)} Hz</span><span>silencio {fmt(r.acoustic?.estimated_silence_ratio)}</span></div></div>):<div className="empty">Sin registros.</div>}</section>
+ </main></div>}
