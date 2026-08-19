@@ -1,0 +1,11 @@
+import express from 'express';
+import cors from 'cors';
+import multer from 'multer';
+const app=express(); const upload=multer({dest:'uploads/'}); app.use(cors()); app.use(express.json());
+const profile={personId:'demo-001',baselineDays:43,globalConfidence:'media',signals:[{key:'mood',label:'Ánimo',score:36,trend:'down'},{key:'anxiety',label:'Ansiedad / tensión',score:63,trend:'up'},{key:'energy',label:'Energía',score:31,trend:'down'},{key:'sleep',label:'Sueño',score:42,trend:'down'}]};
+app.get('/api/health',(req,res)=>res.json({ok:true,service:'PsiA API',version:'0.1.0'}));
+app.get('/api/profile/:id',(req,res)=>res.json(profile));
+app.get('/api/evidence/:id',(req,res)=>res.json([{source:'audio',at:'hoy 08:16',signal:'energy',text:'Mayor duración de pausas respecto de línea base.',confidence:'media'},{source:'note',at:'ayer 22:40',signal:'sleep',text:'Tercera mención semanal de dificultad para dormir.',confidence:'media'}]));
+app.post('/api/notes',(req,res)=>res.status(201).json({ok:true,id:`note-${Date.now()}`,received:req.body}));
+app.post('/api/audio',upload.single('audio'),(req,res)=>res.status(202).json({ok:true,id:`audio-${Date.now()}`,status:'queued',message:'En una versión posterior este endpoint conectará transcripción + análisis acústico + motor de evidencia.'}));
+app.listen(3001,()=>console.log('PsiA API http://localhost:3001'));
