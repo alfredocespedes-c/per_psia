@@ -1,7 +1,7 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException
 import tempfile, os, librosa, numpy as np
 from datetime import datetime, timezone
-app=FastAPI(title='PsiA Audio Engine',version='0.3.0')
+app=FastAPI(title='PsiA Audio Engine',version='0.3.1')
 @app.get('/health')
 def health(): return {'ok':True,'service':'psia-python-audio'}
 @app.post('/analyze')

@@ -1,3 +1,13 @@
+# PsiA MVP v0.3.1
+
+## Corrección GitHub Pages / Failed to fetch
+
+Esta versión usa un modo híbrido. Intenta `Node/Express -> Python/librosa` en `http://localhost:3001`. Si el backend local no está accesible (caso normal al abrir GitHub Pages sin servicios locales), el frontend cambia automáticamente a un analizador basado en Web Audio API. El JSON exportado incluye `processing.engine`, `python_used` y `fallback` para dejar trazabilidad del motor utilizado.
+
+Para obtener el conjunto completo de métricas (MFCC, centroide espectral y cálculo de pitch/variabilidad con librosa), iniciar Node y Python localmente. El modo navegador es una demostración funcional y no reemplaza el motor Python.
+
+---
+
 # PsiA MVP v0.3.0
 
 Prototipo funcional para analizar audio sin servicios LLM externos.
