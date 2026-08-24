@@ -6,8 +6,9 @@ import librosa
 import numpy as np
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from faster_whisper import WhisperModel
 
-app = FastAPI(title="PsiA API", version="0.6.0")
+app = FastAPI(title="PsiA API", version="0.6.1")
 
 app.add_middleware(
     CORSMiddleware,
@@ -22,16 +23,63 @@ app.add_middleware(
 )
 
 MAX_FILE_BYTES = 30 * 1024 * 1024
+MODEL_NAME = os.getenv("WHISPER_MODEL", "base")
+COMPUTE_TYPE = os.getenv("WHISPER_COMPUTE_TYPE", "int8")
+_whisper_model = None
+
+
+def get_whisper_model():
+    global _whisper_model
+    if _whisper_model is None:
+        _whisper_model = WhisperModel(MODEL_NAME, device="cpu", compute_type=COMPUTE_TYPE)
+    return _whisper_model
 
 
 @app.get("/")
 def root():
-    return {"ok": True, "service": "psia-api", "version": "0.6.0"}
+    return {"ok": True, "service": "psia-api", "version": "0.6.1"}
 
 
 @app.get("/health")
 def health():
-    return {"ok": True, "service": "psia-api", "version": "0.6.0"}
+    return {
+        "ok": True,
+        "service": "psia-api",
+        "version": "0.6.1",
+        "transcription_enabled": True,
+        "whisper_model": MODEL_NAME,
+    }
+
+
+def transcribe_audio(path: str):
+    model = get_whisper_model()
+    raw_segments, info = model.transcribe(
+        path,
+        language="es",
+        vad_filter=True,
+        beam_size=1,
+    )
+    segments = []
+    for seg in raw_segments:
+        text = seg.text.strip()
+        if text:
+            segments.append(
+                {
+                    "start": round(float(seg.start), 2),
+                    "end": round(float(seg.end), 2),
+                    "text": text,
+                }
+            )
+    full_text = " ".join(s["text"] for s in segments).strip()
+    return {
+        "status": "completed",
+        "text": full_text,
+        "engine": "faster_whisper",
+        "model": MODEL_NAME,
+        "language": info.language,
+        "language_probability": round(float(info.language_probability), 4),
+        "segments": segments,
+    }
 
 
 async def _analyze(audio: UploadFile):
@@ -53,7 +101,7 @@ async def _analyze(audio: UploadFile):
         except Exception as exc:
             raise HTTPException(
                 status_code=415,
-                detail="No fue posible decodificar el audio. Prueba WAV, MP3, M4A u OGG.",
+                detail="No fue posible decodificar el audio. Prueba WAV, MP3, M4A, MP4 u OGG.",
             ) from exc
 
         if y.size < max(1, sr // 4):
@@ -71,6 +119,17 @@ async def _analyze(audio: UploadFile):
         frame_seconds = 512 / sr
         silence_seconds = float(np.sum(silent) * frame_seconds)
         mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13)
+
+        try:
+            transcription = transcribe_audio(path)
+        except Exception as exc:
+            transcription = {
+                "status": "error",
+                "text": None,
+                "engine": "faster_whisper",
+                "model": MODEL_NAME,
+                "error": str(exc),
+            }
 
         return {
             "schema": "psia.audio.v1",
@@ -104,7 +163,7 @@ async def _analyze(audio: UploadFile):
                 "clinical_inference": False,
                 "note": "Estas métricas describen la señal acústica; no constituyen diagnóstico ni estado psicológico.",
             },
-            "transcription": {"status": "not_enabled", "text": None, "engine": None},
+            "transcription": transcription,
         }
     finally:
         if path:
