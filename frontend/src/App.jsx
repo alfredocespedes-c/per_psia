@@ -8,18 +8,64 @@ export default function App(){
  const [records,setRecords]=useState(()=>{try{return JSON.parse(localStorage.getItem('psia_audio_records')||'[]')}catch{return[]}});
  const [busy,setBusy]=useState(false);
  const [msg,setMsg]=useState('');
+ const [apiStatus,setApiStatus]=useState('warming');
  const input=useRef();
  useEffect(()=>localStorage.setItem('psia_audio_records',JSON.stringify(records)),[records]);
+
+ useEffect(()=>{
+  let cancelled=false;
+  async function warmUp(){
+   setApiStatus('warming');
+   setMsg('Preparando motor de análisis…');
+   const controller=new AbortController();
+   const timeout=setTimeout(()=>controller.abort(),60000);
+   try{
+    const r=await fetch(`${API}/health`,{signal:controller.signal,cache:'no-store'});
+    if(!r.ok)throw new Error(`HTTP ${r.status}`);
+    if(!cancelled){
+     setApiStatus('ready');
+     setMsg('Motor de análisis listo.');
+    }
+   }catch(e){
+    if(!cancelled){
+     setApiStatus('slow');
+     setMsg('El motor puede estar iniciándose. Puedes intentar procesar el audio; la primera ejecución puede tardar más.');
+    }
+   }finally{
+    clearTimeout(timeout);
+   }
+  }
+  warmUp();
+  return()=>{cancelled=true};
+ },[]);
+
+ async function ensureApiReady(){
+  setMsg('Comprobando motor de análisis…');
+  const controller=new AbortController();
+  const timeout=setTimeout(()=>controller.abort(),90000);
+  try{
+   const r=await fetch(`${API}/health`,{signal:controller.signal,cache:'no-store'});
+   if(!r.ok)throw new Error(`HTTP ${r.status}`);
+   setApiStatus('ready');
+   return true;
+  }catch(e){
+   setApiStatus('slow');
+   return false;
+  }finally{
+   clearTimeout(timeout);
+  }
+ }
 
  async function analyzeFile(file){
   if(!file)return;
   setBusy(true);
-  setMsg('Procesando audio en PsiA…');
   try{
+   const ready=await ensureApiReady();
+   setMsg(ready?'Procesando audio y generando transcripción…':'El motor está respondiendo lento. Intentando procesar de todas formas…');
    const fd=new FormData();
    fd.append('audio',file);
    const controller=new AbortController();
-   const timeout=setTimeout(()=>controller.abort(),180000);
+   const timeout=setTimeout(()=>controller.abort(),300000);
    let r;
    try{
     r=await fetch(`${API}/api/audio/analyze`,{method:'POST',body:fd,signal:controller.signal});
@@ -30,16 +76,21 @@ export default function App(){
     const x=await r.json().catch(()=>({}));
     throw new Error(x.detail||x.error||`HTTP ${r.status}`);
    }
+   setMsg('Procesamiento terminado. Preparando resultados…');
    const j=await r.json();
    if(!j.processing?.python_used || j.processing?.fallback){
     throw new Error('La respuesta no provino del motor remoto de PsiA.');
    }
    const rec={id:crypto.randomUUID(),saved_at:new Date().toISOString(),...j};
    setRecords(x=>[rec,...x]);
+   setApiStatus('ready');
    const transcribed=j.transcription?.status==='completed'&&j.transcription?.text;
    setMsg(transcribed?'Análisis y transcripción completados.':'Análisis completado. La transcripción no pudo generarse.');
   }catch(e){
-   const message=e?.name==='AbortError'?'La API tardó demasiado en responder. Intenta nuevamente.':(e?.message||String(e));
+   let message;
+   if(e?.name==='AbortError')message='El procesamiento superó los 5 minutos. El servidor puede estar iniciándose o el audio puede requerir más tiempo.';
+   else if((e?.message||'').toLowerCase().includes('load failed')||(e?.message||'').toLowerCase().includes('failed to fetch'))message='No fue posible mantener la conexión con el motor de análisis. Intenta nuevamente; si el servidor estaba inactivo, el segundo intento normalmente responde más rápido.';
+   else message=e?.message||String(e);
    setMsg(`Error de procesamiento: ${message}`);
   }finally{
    setBusy(false);
@@ -65,8 +116,9 @@ export default function App(){
  }
  function clear(){if(confirm('¿Eliminar los análisis guardados en este navegador?'))setRecords([])}
  const last=records[0];
- return <div className="appShell"><aside className="sidebar"><div className="brand"><div className="brandMark"><BrainCircuit size={24}/></div><div><b>PsiA</b><small>Audio Engine v0.6.1</small></div></div><nav><button className="active"><Activity size={18}/> Laboratorio de audio</button></nav><div className="privacy"><ShieldAlert size={18}/><div><b>Medición, no diagnóstico</b><span>La versión actual mide señal acústica y no infiere un estado clínico.</span></div></div></aside><main><header><div><p className="eyebrow">PROTOTIPO FUNCIONAL</p><h1>Análisis acústico y transcripción</h1><p className="sub">Procesamiento remoto PsiA · métricas acústicas · transcripción · JSON</p></div><button className="profile" onClick={exportJson} disabled={!records.length}><Download size={17}/> Exportar JSON</button></header>
- <section className="heroCard"><div><span className="statusPill">API conectada</span><h2>Sube un audio para analizarlo con el motor remoto de PsiA.</h2><p>El audio se procesa en la API de PsiA para obtener métricas acústicas y transcripción. Si la API no responde, el sistema mostrará el error y no reemplazará el resultado por un análisis parcial del navegador.</p><div className="heroActions"><button onClick={sample} disabled={busy}><Play size={17}/> Probar audio base</button><button className="secondary" onClick={()=>input.current.click()} disabled={busy}><Upload size={17}/> Subir mi audio</button><input ref={input} hidden type="file" accept="audio/*,.wav,.mp3,.m4a,.mp4,.ogg,.flac" onChange={e=>analyzeFile(e.target.files?.[0])}/></div>{msg&&<p className="runMessage">{msg}</p>}</div><div className="heroGauge"><div className="ring"><span>{records.length}</span><small>análisis<br/>guardados</small></div><p>Persistencia: <b>localStorage</b></p></div></section>
+ const statusLabel=apiStatus==='ready'?'Motor listo':apiStatus==='warming'?'Preparando motor':'Motor iniciándose';
+ return <div className="appShell"><aside className="sidebar"><div className="brand"><div className="brandMark"><BrainCircuit size={24}/></div><div><b>PsiA</b><small>Audio Engine v0.6.2</small></div></div><nav><button className="active"><Activity size={18}/> Laboratorio de audio</button></nav><div className="privacy"><ShieldAlert size={18}/><div><b>Medición, no diagnóstico</b><span>La versión actual mide señal acústica y no infiere un estado clínico.</span></div></div></aside><main><header><div><p className="eyebrow">PROTOTIPO FUNCIONAL</p><h1>Análisis acústico y transcripción</h1><p className="sub">Procesamiento remoto PsiA · métricas acústicas · transcripción · JSON</p></div><button className="profile" onClick={exportJson} disabled={!records.length}><Download size={17}/> Exportar JSON</button></header>
+ <section className="heroCard"><div><span className="statusPill">{statusLabel}</span><h2>Sube un audio para analizarlo con el motor remoto de PsiA.</h2><p>Al abrir la página, PsiA prepara automáticamente el motor de análisis. Si el servidor estaba inactivo, la primera ejecución puede tardar más; el procesamiento dispone de hasta 5 minutos antes de cancelar la solicitud.</p><div className="heroActions"><button onClick={sample} disabled={busy}><Play size={17}/> Probar audio base</button><button className="secondary" onClick={()=>input.current.click()} disabled={busy}><Upload size={17}/> Subir mi audio</button><input ref={input} hidden type="file" accept="audio/*,.wav,.mp3,.m4a,.mp4,.ogg,.flac" onChange={e=>analyzeFile(e.target.files?.[0])}/></div>{msg&&<p className="runMessage">{msg}</p>}</div><div className="heroGauge"><div className="ring"><span>{records.length}</span><small>análisis<br/>guardados</small></div><p>Persistencia: <b>localStorage</b></p></div></section>
  <div className="grid2"><section className="panel"><div className="panelTitle"><div><p className="eyebrow">ÚLTIMO RESULTADO</p><h3>Métricas acústicas</h3></div></div>{last?<div className="metricGrid">{[['Duración',last.source?.duration_sec,'s'],['Muestreo',last.source?.sample_rate_hz,'Hz'],['Pitch medio',last.acoustic?.pitch_hz_mean,'Hz'],['Variabilidad pitch',last.acoustic?.pitch_hz_std,'Hz'],['Energía RMS',last.acoustic?.rms_energy_mean,''],['Silencio estimado',last.acoustic?.estimated_silence_sec,'s'],['Ratio silencio',last.acoustic?.estimated_silence_ratio,''],['Centroide espectral',last.acoustic?.spectral_centroid_hz_mean,'Hz']].map(([a,b,c])=><div className="metric" key={a}><small>{a}</small><b>{fmt(b)} {c}</b></div>)}</div>:<div className="empty">Aún no hay análisis. Usa el audio base para generar el primero.</div>}</section>
  <section className="panel"><div className="panelTitle"><div><p className="eyebrow">TRANSCRIPCIÓN</p><h3>Texto detectado</h3></div></div>{last?<div className="empty" style={{textAlign:'left',whiteSpace:'pre-wrap'}}>{last.transcription?.text||'No se generó transcripción para este audio.'}</div>:<div className="empty">Sin transcripción todavía.</div>}</section></div>
  <section className="panel"><div className="panelTitle"><div><p className="eyebrow">DATOS GUARDADOS</p><h3>Registro JSON</h3></div></div><pre className="jsonPreview">{last?JSON.stringify(last,null,2):'{}'}</pre></section>
