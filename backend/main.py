@@ -2,13 +2,14 @@ from datetime import datetime, timezone
 import os
 import tempfile
 
+import av
 import librosa
 import numpy as np
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from faster_whisper import WhisperModel
 
-app = FastAPI(title="PsiA API", version="0.6.1")
+app = FastAPI(title="PsiA API", version="0.7.1")
 
 app.add_middleware(
     CORSMiddleware,
@@ -25,6 +26,7 @@ app.add_middleware(
 MAX_FILE_BYTES = 30 * 1024 * 1024
 MODEL_NAME = os.getenv("WHISPER_MODEL", "base")
 COMPUTE_TYPE = os.getenv("WHISPER_COMPUTE_TYPE", "int8")
+ANALYSIS_SAMPLE_RATE = 16000
 _whisper_model = None
 
 
@@ -37,7 +39,7 @@ def get_whisper_model():
 
 @app.get("/")
 def root():
-    return {"ok": True, "service": "psia-api", "version": "0.6.1"}
+    return {"ok": True, "service": "psia-api", "version": "0.7.1"}
 
 
 @app.get("/health")
@@ -45,10 +47,59 @@ def health():
     return {
         "ok": True,
         "service": "psia-api",
-        "version": "0.6.1",
+        "version": "0.7.1",
         "transcription_enabled": True,
         "whisper_model": MODEL_NAME,
+        "audio_normalization": "pyav_pcm_mono_16khz",
     }
+
+
+def decode_audio_pcm(path: str):
+    """Decode any browser/media format to normalized mono float PCM at 16 kHz."""
+    try:
+        container = av.open(path)
+        audio_streams = [s for s in container.streams if s.type == "audio"]
+        if not audio_streams:
+            container.close()
+            raise ValueError("El archivo no contiene una pista de audio")
+
+        resampler = av.audio.resampler.AudioResampler(
+            format="fltp",
+            layout="mono",
+            rate=ANALYSIS_SAMPLE_RATE,
+        )
+        chunks = []
+
+        for frame in container.decode(audio=0):
+            converted = resampler.resample(frame)
+            if converted is None:
+                continue
+            frames = converted if isinstance(converted, list) else [converted]
+            for out_frame in frames:
+                arr = out_frame.to_ndarray()
+                if arr.size:
+                    chunks.append(np.asarray(arr, dtype=np.float32).reshape(-1))
+
+        flushed = resampler.resample(None)
+        if flushed is not None:
+            frames = flushed if isinstance(flushed, list) else [flushed]
+            for out_frame in frames:
+                arr = out_frame.to_ndarray()
+                if arr.size:
+                    chunks.append(np.asarray(arr, dtype=np.float32).reshape(-1))
+
+        container.close()
+        if not chunks:
+            raise ValueError("No fue posible obtener muestras de audio")
+
+        y = np.concatenate(chunks).astype(np.float32, copy=False)
+        y = np.nan_to_num(y, nan=0.0, posinf=0.0, neginf=0.0)
+        return y, ANALYSIS_SAMPLE_RATE
+    except Exception as exc:
+        raise HTTPException(
+            status_code=415,
+            detail="No fue posible decodificar el audio. Prueba WAV, MP3, M4A, MP4, WebM u OGG.",
+        ) from exc
 
 
 def transcribe_audio(path: str):
@@ -96,13 +147,7 @@ async def _analyze(audio: UploadFile):
             tmp.write(raw)
             path = tmp.name
 
-        try:
-            y, sr = librosa.load(path, sr=None, mono=True)
-        except Exception as exc:
-            raise HTTPException(
-                status_code=415,
-                detail="No fue posible decodificar el audio. Prueba WAV, MP3, M4A, MP4 u OGG.",
-            ) from exc
+        y, sr = decode_audio_pcm(path)
 
         if y.size < max(1, sr // 4):
             raise HTTPException(status_code=400, detail="Audio demasiado corto")
@@ -140,6 +185,8 @@ async def _analyze(audio: UploadFile):
                 "sample_rate_hz": int(sr),
                 "duration_sec": round(duration, 3),
                 "size_bytes": len(raw),
+                "normalized": True,
+                "normalized_format": "pcm_f32_mono_16khz",
             },
             "acoustic": {
                 "rms_energy_mean": round(float(np.mean(rms)), 6),
@@ -153,10 +200,12 @@ async def _analyze(audio: UploadFile):
                 "mfcc_mean": [round(float(v), 4) for v in np.mean(mfcc, axis=1)],
             },
             "processing": {
-                "engine": "python_librosa",
+                "engine": "python_librosa_pyav",
                 "python_used": True,
                 "fallback": False,
                 "deployment": "remote_api",
+                "decoder": "pyav",
+                "analysis_sample_rate_hz": ANALYSIS_SAMPLE_RATE,
             },
             "interpretation": {
                 "status": "measurement_only",
