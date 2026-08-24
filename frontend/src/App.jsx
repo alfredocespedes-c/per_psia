@@ -1,40 +1,74 @@
 import React,{useEffect,useRef,useState} from 'react';
-import {BrainCircuit,Mic2,Upload,Download,Trash2,Play,Activity,ShieldAlert} from 'lucide-react';
-const API=import.meta.env.VITE_API_URL||'http://localhost:3001';
+import {BrainCircuit,Upload,Download,Trash2,Play,Activity,ShieldAlert} from 'lucide-react';
 
-async function analyzeInBrowser(file){
- const buf=await file.arrayBuffer();
- const ctx=new (window.AudioContext||window.webkitAudioContext)();
- try{
-  const audio=await ctx.decodeAudioData(buf.slice(0));
-  const sr=audio.sampleRate; const channels=audio.numberOfChannels; const len=audio.length;
-  const y=new Float32Array(len);
-  for(let c=0;c<channels;c++){const d=audio.getChannelData(c);for(let i=0;i<len;i++)y[i]+=d[i]/channels}
-  let ss=0,z=0; for(let i=0;i<len;i++){ss+=y[i]*y[i];if(i&&((y[i]>=0)!=(y[i-1]>=0)))z++}
-  const rms=Math.sqrt(ss/Math.max(1,len));
-  const frame=Math.max(256,Math.round(sr*0.032)); let silent=0,frames=0;
-  for(let i=0;i<len;i+=frame){let e=0,n=0;for(let j=i;j<Math.min(i+frame,len);j++){e+=y[j]*y[j];n++}const r=Math.sqrt(e/Math.max(1,n));if(r<Math.max(0.008,rms*0.22))silent+=n;frames++}
-  // Autocorrelación simple sobre una ventana representativa para estimar pitch de demostración.
-  const maxN=Math.min(len,Math.round(sr*3)); const step=Math.max(1,Math.floor(maxN/12000)); const a=[];for(let i=0;i<maxN;i+=step)a.push(y[i]);
-  const effSr=sr/step,minLag=Math.floor(effSr/400),maxLag=Math.floor(effSr/65);let bestLag=0,best=-1;
-  for(let lag=minLag;lag<=Math.min(maxLag,a.length-2);lag++){let num=0,d1=0,d2=0;for(let i=0;i<a.length-lag;i++){const x=a[i],q=a[i+lag];num+=x*q;d1+=x*x;d2+=q*q}const corr=num/(Math.sqrt(d1*d2)+1e-12);if(corr>best){best=corr;bestLag=lag}}
-  const pitch=best>0.25&&bestLag?effSr/bestLag:null;
-  const dur=len/sr;
-  return {schema:'psia.audio.v1',analyzed_at:new Date().toISOString(),source:{filename:file.name,content_type:file.type||null,sample_rate_hz:sr,duration_sec:+dur.toFixed(3)},acoustic:{rms_energy_mean:+rms.toFixed(6),rms_energy_std:null,pitch_hz_mean:pitch?+pitch.toFixed(2):null,pitch_hz_std:null,zero_crossing_rate_mean:+(z/Math.max(1,len)).toFixed(6),spectral_centroid_hz_mean:null,estimated_silence_sec:+(silent/sr).toFixed(3),estimated_silence_ratio:+(silent/Math.max(1,len)).toFixed(4),mfcc_mean:null},processing:{engine:'browser_web_audio',python_used:false,fallback:true},interpretation:{status:'measurement_only',clinical_inference:false,note:'Análisis de respaldo ejecutado en el navegador. Describe señal acústica y no constituye diagnóstico ni estado psicológico.'},transcription:{status:'not_enabled',text:null,engine:null}}
- }finally{await ctx.close()}
-}
-
+const API=(import.meta.env.VITE_API_URL||'https://per-psia-api.onrender.com').replace(/\/$/,'');
 const fmt=n=>n==null?'—':typeof n==='number'?n.toLocaleString('es-CL'):n;
+
 export default function App(){
- const [records,setRecords]=useState(()=>{try{return JSON.parse(localStorage.getItem('psia_audio_records')||'[]')}catch{return[]}});const [busy,setBusy]=useState(false);const [msg,setMsg]=useState('');const input=useRef();
+ const [records,setRecords]=useState(()=>{try{return JSON.parse(localStorage.getItem('psia_audio_records')||'[]')}catch{return[]}});
+ const [busy,setBusy]=useState(false);
+ const [msg,setMsg]=useState('');
+ const input=useRef();
  useEffect(()=>localStorage.setItem('psia_audio_records',JSON.stringify(records)),[records]);
- async function analyzeFile(file){if(!file)return;setBusy(true);setMsg('Buscando motor Python local…');try{let j=null;try{const fd=new FormData();fd.append('audio',file);const r=await fetch(`${API}/api/audio/analyze`,{method:'POST',body:fd,signal:AbortSignal.timeout(3500)});if(!r.ok){const x=await r.json().catch(()=>({}));throw new Error(x.detail||x.error||`HTTP ${r.status}`)}j=await r.json();j.processing={engine:'python_librosa',python_used:true,fallback:false};setMsg('Analizado con Python/librosa.')}catch(apiError){setMsg('Servicio Python no disponible. Analizando en el navegador…');j=await analyzeInBrowser(file)}const rec={id:crypto.randomUUID(),saved_at:new Date().toISOString(),...j};setRecords(x=>[rec,...x]);setMsg(j.processing?.python_used?'Análisis Python guardado localmente.':'Análisis de respaldo guardado localmente. Para métricas completas, inicia Node + Python.')}catch(e){setMsg(`Error: ${typeof e.message==='string'?e.message:JSON.stringify(e.message)}`)}finally{setBusy(false)}}
- async function sample(){setBusy(true);setMsg('Cargando audio base…');try{const r=await fetch(`${import.meta.env.BASE_URL}audio/audio_base.wav`);const b=await r.blob();await analyzeFile(new File([b],'audio_base.wav',{type:'audio/wav'}))}catch(e){setMsg('No se pudo cargar el audio base.');setBusy(false)}}
- function exportJson(){const payload={schema:'psia.export.v1',exported_at:new Date().toISOString(),record_count:records.length,records};const url=URL.createObjectURL(new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download=`psia_export_${new Date().toISOString().slice(0,10)}.json`;a.click();URL.revokeObjectURL(url)}
+
+ async function analyzeFile(file){
+  if(!file)return;
+  setBusy(true);
+  setMsg('Procesando audio en PsiA…');
+  try{
+   const fd=new FormData();
+   fd.append('audio',file);
+   const controller=new AbortController();
+   const timeout=setTimeout(()=>controller.abort(),180000);
+   let r;
+   try{
+    r=await fetch(`${API}/api/audio/analyze`,{method:'POST',body:fd,signal:controller.signal});
+   }finally{
+    clearTimeout(timeout);
+   }
+   if(!r.ok){
+    const x=await r.json().catch(()=>({}));
+    throw new Error(x.detail||x.error||`HTTP ${r.status}`);
+   }
+   const j=await r.json();
+   if(!j.processing?.python_used || j.processing?.fallback){
+    throw new Error('La respuesta no provino del motor remoto de PsiA.');
+   }
+   const rec={id:crypto.randomUUID(),saved_at:new Date().toISOString(),...j};
+   setRecords(x=>[rec,...x]);
+   const transcribed=j.transcription?.status==='completed'&&j.transcription?.text;
+   setMsg(transcribed?'Análisis y transcripción completados.':'Análisis completado. La transcripción no pudo generarse.');
+  }catch(e){
+   const message=e?.name==='AbortError'?'La API tardó demasiado en responder. Intenta nuevamente.':(e?.message||String(e));
+   setMsg(`Error de procesamiento: ${message}`);
+  }finally{
+   setBusy(false);
+   if(input.current)input.current.value='';
+  }
+ }
+
+ async function sample(){
+  setBusy(true);setMsg('Cargando audio base…');
+  try{
+   const r=await fetch(`${import.meta.env.BASE_URL}audio/audio_base.wav`);
+   if(!r.ok)throw new Error('No se encontró el audio base');
+   const b=await r.blob();
+   setBusy(false);
+   await analyzeFile(new File([b],'audio_base.wav',{type:'audio/wav'}));
+  }catch(e){setMsg(`Error: ${e.message}`);setBusy(false)}
+ }
+
+ function exportJson(){
+  const payload={schema:'psia.export.v1',exported_at:new Date().toISOString(),record_count:records.length,records};
+  const url=URL.createObjectURL(new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}));
+  const a=document.createElement('a');a.href=url;a.download=`psia_export_${new Date().toISOString().slice(0,10)}.json`;a.click();URL.revokeObjectURL(url);
+ }
  function clear(){if(confirm('¿Eliminar los análisis guardados en este navegador?'))setRecords([])}
- const last=records[0];return <div className="appShell"><aside className="sidebar"><div className="brand"><div className="brandMark"><BrainCircuit size={24}/></div><div><b>PsiA</b><small>Audio Engine v0.3.1</small></div></div><nav><button className="active"><Activity size={18}/> Laboratorio de audio</button></nav><div className="privacy"><ShieldAlert size={18}/><div><b>Medición, no diagnóstico</b><span>La versión actual mide señal acústica y no infiere un estado clínico.</span></div></div></aside><main><header><div><p className="eyebrow">PROTOTIPO FUNCIONAL</p><h1>Análisis acústico local</h1><p className="sub">React → Python/librosa cuando está disponible · respaldo Web Audio → JSON</p></div><button className="profile" onClick={exportJson} disabled={!records.length}><Download size={17}/> Exportar JSON</button></header>
- <section className="heroCard"><div><span className="statusPill">Modo híbrido</span><h2>Prueba un audio y observa exactamente qué datos genera PsiA.</h2><p>PsiA intenta primero usar Node + Python/librosa. Si estás en GitHub Pages y esos servicios no están activos, analiza automáticamente el audio dentro del navegador para evitar el error Failed to fetch. El JSON indica qué motor fue utilizado.</p><div className="heroActions"><button onClick={sample} disabled={busy}><Play size={17}/> Probar audio base</button><button className="secondary" onClick={()=>input.current.click()} disabled={busy}><Upload size={17}/> Subir mi audio</button><input ref={input} hidden type="file" accept="audio/*,.wav,.mp3,.m4a,.ogg" onChange={e=>analyzeFile(e.target.files?.[0])}/></div>{msg&&<p className="runMessage">{msg}</p>}</div><div className="heroGauge"><div className="ring"><span>{records.length}</span><small>análisis<br/>guardados</small></div><p>Persistencia: <b>localStorage</b></p></div></section>
+ const last=records[0];
+ return <div className="appShell"><aside className="sidebar"><div className="brand"><div className="brandMark"><BrainCircuit size={24}/></div><div><b>PsiA</b><small>Audio Engine v0.6.1</small></div></div><nav><button className="active"><Activity size={18}/> Laboratorio de audio</button></nav><div className="privacy"><ShieldAlert size={18}/><div><b>Medición, no diagnóstico</b><span>La versión actual mide señal acústica y no infiere un estado clínico.</span></div></div></aside><main><header><div><p className="eyebrow">PROTOTIPO FUNCIONAL</p><h1>Análisis acústico y transcripción</h1><p className="sub">Procesamiento remoto PsiA · métricas acústicas · transcripción · JSON</p></div><button className="profile" onClick={exportJson} disabled={!records.length}><Download size={17}/> Exportar JSON</button></header>
+ <section className="heroCard"><div><span className="statusPill">API conectada</span><h2>Sube un audio para analizarlo con el motor remoto de PsiA.</h2><p>El audio se procesa en la API de PsiA para obtener métricas acústicas y transcripción. Si la API no responde, el sistema mostrará el error y no reemplazará el resultado por un análisis parcial del navegador.</p><div className="heroActions"><button onClick={sample} disabled={busy}><Play size={17}/> Probar audio base</button><button className="secondary" onClick={()=>input.current.click()} disabled={busy}><Upload size={17}/> Subir mi audio</button><input ref={input} hidden type="file" accept="audio/*,.wav,.mp3,.m4a,.mp4,.ogg,.flac" onChange={e=>analyzeFile(e.target.files?.[0])}/></div>{msg&&<p className="runMessage">{msg}</p>}</div><div className="heroGauge"><div className="ring"><span>{records.length}</span><small>análisis<br/>guardados</small></div><p>Persistencia: <b>localStorage</b></p></div></section>
  <div className="grid2"><section className="panel"><div className="panelTitle"><div><p className="eyebrow">ÚLTIMO RESULTADO</p><h3>Métricas acústicas</h3></div></div>{last?<div className="metricGrid">{[['Duración',last.source?.duration_sec,'s'],['Muestreo',last.source?.sample_rate_hz,'Hz'],['Pitch medio',last.acoustic?.pitch_hz_mean,'Hz'],['Variabilidad pitch',last.acoustic?.pitch_hz_std,'Hz'],['Energía RMS',last.acoustic?.rms_energy_mean,''],['Silencio estimado',last.acoustic?.estimated_silence_sec,'s'],['Ratio silencio',last.acoustic?.estimated_silence_ratio,''],['Centroide espectral',last.acoustic?.spectral_centroid_hz_mean,'Hz']].map(([a,b,c])=><div className="metric" key={a}><small>{a}</small><b>{fmt(b)} {c}</b></div>)}</div>:<div className="empty">Aún no hay análisis. Usa el audio base para generar el primero.</div>}</section>
- <section className="panel"><div className="panelTitle"><div><p className="eyebrow">DATOS GUARDADOS</p><h3>Registro JSON</h3></div></div><pre className="jsonPreview">{last?JSON.stringify(last,null,2):'{}'}</pre></section></div>
+ <section className="panel"><div className="panelTitle"><div><p className="eyebrow">TRANSCRIPCIÓN</p><h3>Texto detectado</h3></div></div>{last?<div className="empty" style={{textAlign:'left',whiteSpace:'pre-wrap'}}>{last.transcription?.text||'No se generó transcripción para este audio.'}</div>:<div className="empty">Sin transcripción todavía.</div>}</section></div>
+ <section className="panel"><div className="panelTitle"><div><p className="eyebrow">DATOS GUARDADOS</p><h3>Registro JSON</h3></div></div><pre className="jsonPreview">{last?JSON.stringify(last,null,2):'{}'}</pre></section>
  <section className="panel historyPanel"><div className="panelTitle"><div><p className="eyebrow">HISTORIAL LOCAL</p><h3>Análisis realizados</h3></div><button className="iconText" onClick={clear} disabled={!records.length}><Trash2 size={16}/> Limpiar</button></div>{records.length?records.map(r=><div className="audioRow" key={r.id}><div><b>{r.source?.filename}</b><span>{new Date(r.saved_at).toLocaleString('es-CL')}</span></div><div><span>{r.source?.duration_sec}s</span><span>pitch {fmt(r.acoustic?.pitch_hz_mean)} Hz</span><span>silencio {fmt(r.acoustic?.estimated_silence_ratio)}</span></div></div>):<div className="empty">Sin registros.</div>}</section>
  </main></div>}
